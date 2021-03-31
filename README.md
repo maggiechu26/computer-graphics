@@ -1,1 +1,1 @@
-# computer-graphics
+# computer-graphics-projects
