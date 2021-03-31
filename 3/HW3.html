@@ -1,0 +1,367 @@
+<script src=lib2.js></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/13.0.1/Tone.min.js" type="text/javascript"></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=400 height=400></canvas>
+
+<br>
+<input type=range min=1 max=100 value=50 class=slider id=slider1>
+<!-- <input type=range min=1 max=100 value=50 class=slider id=slider2> -->
+</center>
+</body>
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+<!!-------- FRAGMENT SHADER: THIS IS WHERE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ float disk(vec2 xy, float x, float y, float r) {
+    xy = (xy - vec2(x, y)) / r;
+    return step(length(xy), 1.);
+ }
+
+ float edge(vec2 xy, float a, float b, float c) {
+    return step(a * xy.x + b * xy.y + c, 0.);
+ }
+
+ uniform float uTime;   // TIME, IN SECONDS
+
+ const int nl = 3;
+ const int ns = 6;
+
+ uniform vec4 uSph[ns];
+ uniform vec3 uLCol[nl]; //light Color
+ uniform mat4 uM[ns]; //array of 2 matrices
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 0
+
+ // CAMERA FOCAL LENGTH
+
+ float fl = 3.;
+
+ // LIGHT DIRECTION AND COLOR
+
+ vec3 Ld[nl]; //lightDirection
+ vec3 Lc[nl]; //lightColor
+
+ // GEOMETRY
+
+ vec3 backgroundColor = vec3(.1,.2,0.7); //rgb
+
+
+ float raySphere(vec3 V, vec3 W, vec4 Sph) {
+
+    float t = -1.;
+
+    // OFFSET EVERYTHING BY SPHERE ORIGIN
+
+    vec3 Vp = V - Sph.xyz;
+
+    // COMPUTE QUADRATIC COEFFICIENTS
+
+    float B = dot(W, Vp);
+    float C = dot(Vp, Vp) - Sph.w * Sph.w;
+    float discr = B * B - C;
+
+    // IF DISCRIMINANT IS NOT NEGATIVE
+
+    if (discr >= 0.)
+       t = -B - sqrt(discr); // COMPUTE t
+
+    return t;
+ }
+
+/** Function for Reflection direction
+@N:surface normal, @L:Light
+*/
+ vec3 R (vec3 N, vec3 L) {
+  return 2.0 * dot(N, L) * N - L;
+ }
+
+
+
+/**Function for phong shading
+@P:surface point, @N: surface normal, @E: W, @M: matrix containing [#spheres]ambient, diffuse, sphere
+*/
+ vec3 doShading(vec3 P, vec3 N, vec3 E, mat4 M) {
+    mat4 material = M;
+    vec3 ambient = material[0].rgb;
+    vec3 diffuse = material[1].rgb;
+    vec3 specular = vec3(0.5,0.5,0.5);
+    float p = 20.0;
+    vec3 color = ambient;
+  
+    //loop through lights
+    for (int il = 0 ; il < nl ; il++) {
+
+      color += uLCol[il] * (diffuse * max(0., dot(N,Ld[il])) + specular * pow(max(0., dot(R(N,Ld[il]), -E)), p)); 
+    }
+
+    return color;
+ }
+
+ void main() {
+
+    // DEFINE LIGHTS
+
+    Ld[0] = normalize(vec3(1.,1.,1.));
+    Lc[0] = vec3(.8,.3,4.);
+
+    Ld[1] = normalize(vec3(-1.,-1.,-1.));
+    Lc[1] = vec3(.6,.4,.2);
+
+    // BACKGROUND COLOR
+    //trying things out as in trying to make the background crazy
+    vec3 color = backgroundColor * noise(3.6 * vPos * uTime/5.0);  
+    float backgroundNoise1 = disk(vec2(2., 2.), .5, .5, .6);
+    color = mix(color, vec3(1.,1.,1.), backgroundNoise1);
+ 
+    float r = vPos.x;
+    float g = vPos.y;
+    float b = Ld[1].y;
+    vec3 x = 6.0 * vec3(r,g,b);
+    float backgroundNoise = 0.5 * noise(2.0 * x);
+    color = mix(color, vec3(0.2,0.2,0.2), backgroundNoise);
+   
+    // COMPUTE RAY (V,W) AT THIS PIXEL
+
+    vec3 V = vec3(sin(uTime)*0.3+0.3,0,0.); //ray origin
+    vec3 W = normalize(vec3(vPos.xy, -fl)); //ray direction
+
+   //add some noise to ray origin
+    V += .07 * noise(1.5 * vPos);
+    float t0 = 10000.; // REALLY HONKING BIG t
+
+    for (int is = 0 ; is < ns ; is++) {
+
+       float t = raySphere(V, W, uSph[is]);
+
+       if (t >= 0. && t < t0) {
+
+          t0 = t;
+
+          // COMPUTE SURFACE POINT AND NORMAL
+
+          vec3 P = V + t * W;
+          vec3 N = normalize(P - uSph[is].xyz);
+
+          // DO SURFACE SHADING
+
+          color = doShading(P, N, -W, uM[is]);
+
+
+          //Texturing: APPLY NOISE to Spheres
+          N += 0.85 * vec3(noise(10.0 * P),
+                          noise(15.0 * P),
+                           noise(20.0 * P));
+          N = normalize(N);
+
+          float sphereNoise = 0.8;
+          //color = uM[1][1].rgb * sphereNoise;
+          W += .05 * (0.02 * (.5 * W * uTime) );
+
+
+    // FORM REFLECTION RAY
+
+          vec3 Vr = P;
+          vec3 Wr = 2. * dot(-W, N) * N + W;
+
+    // FIND OUT WHAT THE REFLECTION RAY SEES
+
+          vec3 rColor = backgroundColor;
+          float tr0 = 10000.;
+    //Draw Spheres      
+    for (int js = 0 ; js < ns ; js++) {
+       float tr = raySphere(Vr, Wr, uSph[js]);
+       if (tr >= 0. && tr < tr0) {
+          tr0 = tr;
+                vec3 Pr = Vr + tr * Wr;
+                vec3 Nr = normalize(Pr - uSph[js].xyz);
+                rColor = doShading(Pr, Nr, -Wr, uM[js]);
+       }
+    }
+
+
+    // ADD TINTED REFLECTION
+      
+    color += uM[is][3].rgb * rColor;
+
+       }
+    }
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+Flying Mochi!
+</script>
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+This is bascially a bunch of mochi flying around in space. 
+If you slow down the animation with the slider, you would notice one mochi being consumed by a bigger one.
+
+I also added some synth noices for fun. Every time you click on the browser, you will hear a deep C2 sound.
+
+</script>
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+let theta = 0, prevTime = startTime, rate = 1;
+
+// THIS METHOD GETS CALLED WHENEVER USER ADJUSTS THE SLIDER.
+
+slider1.oninput = function() {
+   rate = this.value / 20;
+}
+
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 2000;
+
+   // VARY ROTATION RATE, DEPENDING ON SLIDER VALUE.
+
+   theta += 2 * rate * (time - prevTime);
+   prevTime = time;
+
+   // SET A UNIFORM OF TYPE float.
+
+   setUniform('1f', 'uTime', time);
+
+   // SET ARRAYS OF UNIFORMS OF TYPE vec3 AND vec4.
+   //animate 5 spheres
+  setUniform('4fv', 'uSph', [   0,0,-3,.4,
+                               .9 * Math.cos(theta),0,-3 + .9 * Math.sin(theta),.4,
+                               Math.tan(theta),0, -3 + .9 * Math.tan(theta), .2,
+                               Math.sin(theta)*0.5, -1., -0.5, .85,
+                               Math.tan(theta),0, -3, .4,
+                              .5, 1 , -5 + .9 * Math.sin(theta), 0.6, 
+                             ],);
+
+   setUniform('3fv', 'uLCol', [ .5,.5,.5,  .6,.4,.2 ]);
+
+   // SET AN ARRAY OF UNIFORMS OF TYPE mat4.
+   //uniform Spheres, Sphere Color, 
+   setUniform('Matrix4fv', 'uM', false, [
+      2,.025,.1,0.,  20,2,.2,0.,  0.,0.,0.,0.,  1,1,1,0,
+      .5,0.25,.7,0.,  0,.5,.0,0.,  0.,0.,0.,0.,  0,1,0,0,
+      1,.025,.5,1., .2,.5,.3,0., 2., 1., 2., 1., 1.,1.,0.,0.,
+      0,.5,10.0,1.,  0,.5,.0,0.,  0.,0.,0.,0.,  0,1,0,0,
+      2,.025,.1,0.,  -3.0,.5,.3,0., 2., 1., 2., 1.,  1,1,1,0,
+      3.,0.25,5.0,5.,  10,2,.6,0.,  1.,0.,0.,0.,  0,1,0,0,
+   ]);
+
+}
+
+
+//ToneJS stuffs
+
+if (Tone.context.state !== 'running') {
+        Tone.context.resume();
+}
+
+document.documentElement.addEventListener(
+  "mousedown", function(){
+    mouse_IsDown = true;
+    if (Tone.context.state !== 'running') {
+    Tone.context.resume();
+  }})
+
+console.clear();
+const Memsynth = new Tone.MembraneSynth(
+  {
+pitchDecay  : 0.05 ,
+octaves  : 10 ,
+oscillator  : {
+type  : "triangle"
+}  ,
+envelope  : {
+attack  : 0.001 ,
+decay  : 0.4 ,
+sustain  : 2 ,
+release  : 3 ,
+attackCurve  : "exponential"
+}
+}
+)
+
+Memsynth.toMaster();
+
+function playMemsynth() {
+  Memsynth.triggerAttackRelease("C2", "8n");
+}
+
+//put a button
+document.querySelector("body").addEventListener("click",
+  function(){
+    playMemsynth();
+  });
+
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

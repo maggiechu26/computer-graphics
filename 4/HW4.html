@@ -1,0 +1,813 @@
+
+<script src=lib5.js></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.3/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.3/addons/p5.dom.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.3/addons/p5.sound.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/13.0.1/Tone.min.js" type="text/javascript"></script>
+
+<style>
+  button{
+    border-radius: 10px;
+
+  }
+  button:hover{
+    background-color: #00e0f4
+  }
+</style>
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=550 height=550></canvas>
+<h2>Remember to TURN YOUR VOLUME DOWN </h2>
+<br>
+<h3><button type="button" id=startTone>Click to Start Synth Music!</button> <br></h3>
+<h3><button type="button" id=oscilatorOn>Turn ON Oscilator!</button> <br></h3>
+<h3><button type="button" id=noiseOn>Turn ON Noise!</button> <br></h3>
+
+<h3>Move cursor around the canvas<br></h3>
+<h3>Slide and play around with background color & synth speed<br></h3>
+<h3 style="color: red">R - MembraneSynth<input type=range min=1 max=100 value=30 class=slider id=slider1> <br></h3> 
+<h3 style="color: blue">B - MembraneSynth<input type=range min=1 max=100 value=30 class=slider id=slider2> <br></h3>
+<h3 style="color: green">G - MonoSynth<input type=range min=1 max=100 value=30 class=slider id=slider3> <br></h3>
+<h3><button type="button" id=stopSynths>Turn OFF All Synths</button> <br></h3>
+<h3><button type="button" id=oscilatorOff>Turn OFF Oscilator!</button> <br></h3> 
+<h3><button type="button" id=noiseOff>Turn OFF Noise!</button> <br></h3>  
+
+<!-- <h3><button type="button" id=stopTone>Click to Stop All Sounds</button> <br></h3> 
+ -->
+
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   uniform mat4 uMat;
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = uMat * vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+<!!-------- FRAGMENT SHADER: THIS IS WHERE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ float disk(vec2 xy, float x, float y, float r) {
+    xy = (xy - vec2(x, y)) / r;
+    return step(length(xy), 1.);
+ }
+
+ float edge(vec2 xy, float a, float b, float c) {
+    return step(a * xy.x + b * xy.y + c, 0.);
+ }
+
+ uniform float uTime;   // TIME, IN SECONDS
+
+ const int nl = 2;
+ const int ns = 3;
+
+ uniform vec4 uSph[ns];
+ uniform vec3 uLCol[nl];
+ uniform mat4 uM[ns];
+
+ uniform vec3 uBC;
+ uniform vec3 uV;
+ uniform float uNoise;
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 0
+
+ // CAMERA FOCAL LENGTH
+
+ float fl = 3.;
+
+ // LIGHT DIRECTION AND COLOR
+
+ vec3 Ld[nl];
+ //vec3 Lc[nl];
+
+ // GEOMETRY
+
+ //vec4 Sph[ns]; // SHAPE
+ //mat4 M[ns]; // REFLECTANCE
+
+ //vec3 backgroundColor = vec3(.05,.05,.2);
+ vec3 backgroundColor = uBC;
+
+ float raySphere(vec3 V, vec3 W, vec4 Sph) {
+
+    float t = -1.;
+
+    // OFFSET EVERYTHING BY SPHERE ORIGIN
+
+    vec3 Vp = V - Sph.xyz;
+
+    // COMPUTE QUADRATIC COEFFICIENTS
+
+    float B = dot(W, Vp);
+    float C = dot(Vp, Vp) - Sph.w * Sph.w;
+    float discr = B * B - C;
+
+    // IF DISCRIMINANT IS NOT NEGATIVE
+
+    if (discr >= 0.)
+       t = -B - sqrt(discr); // COMPUTE t
+
+    return t;
+ }
+
+/** Function for Reflection direction
+@N:surface normal, @L:Light
+*/
+ vec3 R (vec3 N, vec3 L) {
+  return 2.0 * dot(N, L) * N - L;
+ }
+
+
+
+/**Function for phong shading
+@P:surface point, 
+@N: surface normal, 
+@E: W, 
+@M: matrix containing [#spheres]ambient, diffuse, sphere
+*/
+ vec3 doShading(vec3 P, vec3 N, vec3 E, mat4 M) {
+    mat4 material = M;
+    vec3 ambient = material[0].rgb;
+    vec3 diffuse = material[1].rgb;
+    vec3 specular = vec3(0.5,0.5,0.5);
+    float p = 20.0;
+    vec3 color = ambient;
+  
+    //loop through lights
+    for (int il = 0 ; il < nl ; il++) {
+
+      color += uLCol[il] * (diffuse * max(0., dot(N,Ld[il])) 
+      + specular * pow(max(0., dot(R(N,Ld[il]), -E)), p)); 
+    }
+
+    return color;
+ }
+
+ void main() {
+
+    // DEFINE LIGHTS
+
+    Ld[0] = normalize(vec3(1.,1.,1.));
+    //Lc[0] = vec3(.5,.5,1.);
+
+    Ld[1] = normalize(vec3(-1.,-1.,-1.));
+    //Lc[1] = vec3(.6,.4,.2);
+
+    // DEFINE SPHERES
+
+    // BACKGROUND COLOR
+    //trying things out as in trying to make the background crazy
+    vec3 color = backgroundColor * noise(3.6 * vPos * uTime/10.0);  
+    float backgroundNoise1 = disk(vec2(2., 2.), .5, .5, .6);
+    color = mix(color, vec3(1.,1.,1.), backgroundNoise1);
+ 
+    float r = vPos.x;
+    float g = vPos.y;
+    float b = Ld[1].y;
+    vec3 x = 6.0 * vec3(r,g,b);
+    float backgroundNoise = 0.5 * noise(2.0 * x);
+    color = mix(color, vec3(0.2,0.2,0.2), backgroundNoise);
+
+    // COMPUTE RAY (V,W) AT THIS PIXEL
+
+   // vec3 V = vec3(0.,0.,0.);
+    vec3 V = uV;
+    vec3 W = normalize(vec3(vPos.xy, -fl));
+    //add some noise to ray origin
+    V += .25 * noise(uNoise * vPos );
+    float t0 = 10000.; // REALLY HONKING BIG t
+
+    for (int is = 0 ; is < ns ; is++) {
+
+       float t = raySphere(V, W, uSph[is]);
+
+       if (t >= 0. && t < t0) {
+
+          t0 = t;
+
+          // COMPUTE SURFACE POINT AND NORMAL
+
+          vec3 P = V + t * W;
+          vec3 N = normalize(P - uSph[is].xyz);
+
+          // DO SURFACE SHADING
+
+          color = doShading(P, N, -W, uM[is]);
+
+    // FORM REFLECTION RAY
+
+          vec3 Vr = P;
+          vec3 Wr = 2. * dot(-W, N) * N + W;
+
+    // FIND OUT WHAT THE REFLECTION RAY SEES
+
+          vec3 rColor = backgroundColor;
+          float tr0 = 10000.;
+    for (int js = 0 ; js < ns ; js++) {
+       float tr = raySphere(Vr, Wr, uSph[js]);
+       if (tr >= 0. && tr < tr0) {
+          tr0 = tr;
+                vec3 Pr = Vr + tr * Wr;
+                vec3 Nr = normalize(Pr - uSph[js].xyz);
+                rColor = doShading(Pr, Nr, -Wr, uM[js]);
+       }
+    }
+
+    // ADD TINTED REFLECTION
+
+    color += uM[is][3].rgb * rColor;
+       }
+    }
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+Psychedelic Synth-dom
+</script>
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+<h4>This is an exploration of synth sounds + graphic interaction. </h4> 
+<p>
+You can: <br>
+1. <b style="color: red">Click</b> on Canvas to turn spheres into "puddles" depending on where you click it. </br>
+2. <b style="color: red">Move your cursor </b> around the canvas to adjust frequency of the oscilator and see how the shape and position of the spheres change<br>
+3. Play with the <b style="color: red">sliders</b> to change color and speed of synths <br>
+4. Turn On or Off the oscilators <br>
+5. Turn On or Off the synths <br>
+6. Turn On or Off the "Pink" noise <br>
+7. What is your favorite setting?
+<br>
+Synth Sounds are created using Tone.js<br>
+
+--------<br>
+still need to clean up code and figure bugs out.
+futue work: more interactive.  </br>
+
+--------<br>
+Update on 3/7/2020: I realized there was a bug with my matrix.rotateX, Y, Z code. Before fixing it, I was re-setting "m" to the identity matrix everytime and therefore if I call rotate.x and rotate.y, one will override the other. I fixed it by changing "m" to the correct values. 
+</p>  
+</script>
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+/** ------------------------------------ */
+//ToneJS stuffs
+startTone.onclick = function() {
+  // if (Tone.context.state !== 'running') {
+        Tone.context.resume();
+        Tone.Transport.start();
+        pattern.start();
+        pattern2.start();
+        pattern3.start();
+
+        //noise.start();
+        autoFilter.start();
+        lfo.start();
+
+  // }
+}
+
+console.clear();
+var distortion = new Tone.Distortion(0.6).toMaster();
+var delay = new Tone.PingPongDelay().toMaster();
+var synth = new Tone.MembraneSynth({
+  frequency: "C4",
+  oscillator : {
+    type: "sine",
+    frequency: 60
+  },
+  envelope : {
+    attack : 0.08 ,
+    decay : 0.2 ,
+    sustain : 0.06 ,
+    release : 0.5,
+    attackCurve : "exponential"
+  }
+}).connect(distortion).connect(delay).toMaster();
+synth.volume.value = 10;
+var synth2 = new Tone.MonoSynth({
+  frequency: "C4",
+  detune: 0,
+  oscillator : {
+    type: "sine",
+    frequency: 60
+  },
+  envelope : {
+    attack : 0.04 ,
+    decay : 0.2 ,
+    sustain : 1.0 ,
+    release : 0.5,
+    attackCurve : "linear"
+  }
+}).connect(distortion).connect(delay).toMaster();
+synth2.volume.value = -3;
+
+//arpeggio
+var pattern = new Tone.Pattern(function(time, note){
+  synth.triggerAttackRelease(note, 0.25);
+}, ["C#4", "D#4", "E#4", "G#4", "A#4"]);
+pattern.humanize = true; //Random variation +/-0.01s to the scheduled time. Or give it a time value which it will randomize by.
+// pattern.start();
+// Tone.Transport.start();
+
+//arpeggio
+var pattern2 = new Tone.Pattern(function(time, note){
+  synth.triggerAttackRelease(note, 0.5);
+}, ["E3", "F#3", "A3", "C4", "D4"]);
+pattern2.humanize = true; //Random variation +/-0.01s to the scheduled time. Or give it a time value which it will randomize by.
+// pattern2.start();
+// Tone.Transport.start();
+
+var pattern3 = new Tone.Pattern(function(time, note){
+  synth2.triggerAttackRelease(note, 0.5);
+}, ["G4", "A#5", "E#5", "C4", "G5"]);
+pattern3.humanize = true; //Random variation +/-0.01s to the scheduled time. Or give it a time value which it will randomize by.
+// pattern3.start();
+
+//initialize the noise and start
+var noise = new Tone.Noise("pink");
+
+var autoFilter = new Tone.AutoFilter({
+  "frequency" : "16m",
+  "min" : 5000,
+  "max" : 20000
+}).connect(Tone.Master);
+
+//connect the noise
+noise.connect(autoFilter);
+noise.volume.value = 14;
+//start the autofilter LFO
+// autoFilter.start()
+
+aFilter = new Tone.Filter({
+  type: "lowpass",
+  frequency: 200,
+  rolloff: -24,
+  Q: 2,
+  gain: 1
+});
+
+aFilter.toMaster();
+
+//Plucked String
+ampEnv = new Tone.AmplitudeEnvelope({
+  "attack": 0.5,
+  "decay": 1,
+  "sustain": 1,
+  "release": 1
+});
+ampEnv.releaseCurve = "linear";
+ampEnv.connect(aFilter);
+
+
+var osc = new Tone.FatOscillator().toMaster();
+// osc.type = "triangle";
+osc.volume.value = -99;
+osc.connect(ampEnv).connect(distortion).connect(delay);
+// osc.start();
+var osc2 = new Tone.AMOscillator().toMaster();
+// osc2.type = "triangle";
+osc2.volume.value = -99;
+osc2.connect(ampEnv).connect(distortion).connect(delay);
+// osc2.start();
+
+
+
+
+filterEnv = new Tone.ScaledEnvelope({
+  "attack": 3,
+  "min": 200,
+  "max": 800
+});
+filterEnv.decayCurve = "exponent";
+filterEnv.connect(aFilter.frequency);
+
+freqEnv = new Tone.FrequencyEnvelope({
+  "attack": 0.2,
+  "baseFrequency": "C4",
+  "octaves": 4
+});
+freqEnv.connect(aFilter.frequency);
+
+lfo = new Tone.LFO("32n", 0.5, 3);
+lfo.connect(osc.volume);
+lfo.connect(osc2.volume);
+
+//vibratto
+lfo.connect(osc.frequency);
+lfo.connect(osc2.frequency);
+
+lfo.connect(synth.oscillator.frequency);
+
+synth.connect(ampEnv).connect(distortion).connect(delay);
+synth2.connect(ampEnv).connect(distortion).connect(delay);
+
+
+
+/**
+Map Function: Referencing the P5js map() function 
+*/
+function map(value, min1, max1, min2, max2) {
+  return (value - min1) * (max2 - min2) / (max1 - min1) + min2;
+}
+
+const canvasSound = document.getElementById("canvas1");
+
+
+canvasSound.addEventListener("mousemove", e => {
+  var osc1Freq = map(e.x, 0, canvasSound.width, 100, 400);
+  var osc2Freq = map(e.y, 0, canvasSound.heigh, 100, 400);
+
+  osc.frequency.value = osc1Freq;
+  osc2.frequency.value = osc2Freq;
+
+  var synthOscFreq1 = map(e.x, 0, canvasSound.width, 60,350);
+  synth.oscillator.frequency.value = synthOscFreq1;
+
+});
+
+var noiseVal = 1.5;
+canvasSound.addEventListener("mousedown", e => {
+  // console.log(e);
+  var noiseMap = map(e.y, 0, canvasSound.width, 0.0, 2.0);
+  console.log(noiseMap);
+  noiseVal = noiseMap;
+  // gl_start(canvas1, vs, fs);
+
+//a polysynth composed of Voices of Synth
+var synth = new Tone.PolySynth(4, Tone.Synth, {
+  oscillator : {
+    type : "square"
+  }
+}).toMaster();
+synth.volume.value = +5;
+synth.set("detune", -600);
+synth.connect(ampEnv).connect(distortion).connect(delay);
+synth.triggerAttackRelease(["C#4", "E#4", "G#4"], "2n");
+
+});
+
+
+
+
+
+
+/** ------------------------------------ */
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+let theta = 0, prevTime = startTime, rate = 1;
+let ball2 = 0.9;
+// THIS METHOD GETS CALLED WHENEVER USER ADJUSTS THE SLIDER.
+
+var bgcR = 0.05;
+var bgcG = 0.05;
+var bgcB = 0.2;
+slider1.oninput = function() {
+  // rate = this.value / 50;
+  //pattern ToneJS
+  pattern.playbackRate = this.value / 32;
+  bgcR = this.value * 0.11;
+}
+
+slider2.oninput = function() {
+  // rate = this.value / 50;
+  //pattern ToneJS
+  pattern2.playbackRate = this.value / 32;
+  bgcB = this.value * 0.11;
+}
+
+slider3.oninput = function() {
+  // rate = this.value / 50;
+  //pattern ToneJS
+  pattern3.playbackRate = this.value / 16;
+  bgcG = this.value * 0.12;
+}
+
+oscilatorOff.onclick = function() {
+  osc.stop()
+  osc2.stop()
+}
+
+
+oscilatorOn.onclick = function() {
+  // console.log(osc.state);
+  if(osc.state == "stopped") {
+    // console.log('got here');
+    ////starts the osc 0.5 seconds from now
+    osc.start("+0.5"); 
+    // osc2.start("+0.5");
+  }
+}
+
+noiseOn.onclick = function() {
+  noise.start();
+}
+
+noiseOff.onclick = function() {
+  noise.stop();
+}
+stopSynths.onclick = function() {
+  pattern.stop();
+  pattern2.stop();
+  pattern3.stop();
+}
+
+// stopTone.onclick = function() {
+//   Tone.context.close();
+// }
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+
+
+   theta += 2 * rate * (time - prevTime);
+   prevTime = time;
+
+   setUniform('1f', 'uNoise', noiseVal);
+   // SET A UNIFORM OF TYPE float.
+   setUniform('1f', 'uTime', time);
+
+   // SET ARRAYS OF UNIFORMS OF TYPE vec3 AND vec4.
+   //synth.oscillator.frequency.value
+
+   // setUniform('4fv', 'uSph', [ 0.5 * Math.cos(osc.frequency.value/600),0,-3,.4,
+   //                             -ball2 * Math.sin(osc.frequency.value/500),
+   //                             2,
+   //                             -0.5 * Math.tan(osc.frequency.value/500),
+   //                             0.7, //.9 * Math.cos(theta),0,-3 + .9 * Math.sin(theta),.4 
+
+   //                             0,0.5 * Math.cos(osc.frequency.value/200), -3, .4,
+   //                           ]);
+  setUniform('4fv', 'uSph', [ 
+    0.5 * Math.cos(synth.oscillator.frequency.value/600),0,-3,.4,
+                              
+                               -ball2 * Math.sin(osc.frequency.value/500),
+                               0,
+                               -0.3 * Math.tan(osc.frequency.value/500),
+                               0.7, 
+
+                              
+                               0,0.5 * Math.cos(osc.frequency.value/200), -2, .4,
+                             ]);
+
+   setUniform('3fv', 'uLCol', [ 1.0,1.5,1.5,  1.5,.8,.2 ]);
+
+   // SET AN ARRAY OF UNIFORMS OF TYPE mat4.
+
+   setUniform('Matrix4fv', 'uM', false, [
+      .025,.025,.1,0.,  .5,.5,.2,0.,  0.,0.,0.,0.,  1,1,1,0,
+      .01  ,0.5 ,20.,0.,  .0,.5,.0,0.,  0.,0.,0.,0.,  0,1,0,0,
+      0.01,.1,.1,0.,  -3.0,.5,.3,0., 2., 1., 2., 1.,  1,1,1,0,
+
+   ]);
+   var v1, v2, v3 = 0.; //for ray, passing to GPU later
+   setUniform('3fv', 'uBC', [bgcR, bgcG, bgcB]);
+   setUniform('3fv', 'Uv', [v1,v2,v3]);
+
+
+   // CREATE AN INSTANCE OF A MATRIX OBJECT.
+   let matrix = new Matrix();
+   matrix.identity();
+   matrix.rotateZ(0.1 * time);
+    // matrix.rotateY(20.);
+   // matrix.rotateY(0.10* time);
+    matrix.rotateX(0.10* time);
+       // matrix.identity();
+
+     matrix.translate(Math.cos(time) * 0.05, Math.sin(time) * 0.05, Math.cos(time) * 0.05);
+
+   setUniform('Matrix4fv', 'uMat', false, matrix.getValue());
+  //matrix.rotateZ(3 * time);
+
+}
+
+// HERE I AM PARTLY DEFINING A NEW OBJECT CLASS OF TYPE MATRIX.
+
+function Matrix() {
+
+   this.identity = function() {
+      value = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+      return this;
+   }
+
+   this.translate = function(x, y, z) {
+      let m = [1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1]; // (1) CREATE TRANSLATION MATRIX.
+      value = multiply(m, value);                   // (2) MULTIPLY TO CHANGE OBJECT value.
+      return this;
+   }
+   this.rotateX = function(theta) {
+      // YOU NEED TO IMPLEMENT ROTATION ABOUT X HERE
+//    let m = [ ... ];
+//    value = multiply(m, value);
+   /**   
+          1    0      0       0
+          0    cos    -sin    0
+          0    sin    cos     0
+          0    0      0       1
+
+    */
+    // let m = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+    let m = [1,0,0,0, 
+              0,Math.cos(theta),Math.sin(theta),0,  
+              0,-Math.sin(theta),Math.cos(theta),0, 
+              0,0,0,1];
+    // let rx = [1,0,0,0, 
+    //           0,Math.cos(theta),Math.sin(theta),0,  
+    //           0,-Math.sin(theta),Math.cos(theta),0, 
+    //           0,0,0,1];
+    value = multiply(m, value);
+
+    return this;   
+  }
+
+   this.rotateY = function(theta) {
+   /**   
+    cos     0     sin    0
+    0       1     0      0
+    -sin    0     cos    0
+    0       0     0      1
+    */
+    let sinTheta = Math.sin(theta);
+    let cosTheta = Math.cos(theta);
+    // let m = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+    let m = [Math.cos(theta),0,-Math.sin(theta),0,  
+              0,1,0,0,  
+              Math.sin(theta),0,Math.cos(theta),0,  
+              0,0,0,1];
+    // let ry = [Math.cos(theta),0,-Math.sin(theta),0,  
+    //           0,1,0,0,  
+    //           Math.sin(theta),0,Math.cos(theta),0,  
+    //           0,0,0,1];
+    value = multiply(m,value);
+    return this;
+
+   }
+
+   this.rotateZ = function(theta) { 
+    /**
+    cos θ   -sin θ    0             0
+    sin θ   cos θ     0             0
+    0       0         1             0
+    0       0         0             1 
+    */
+    // let sinTheta = Math.sin(theta);
+    // let cosTheta = Math.cos(theta);
+    // let m = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+    let m = [Math.cos(theta),Math.sin(theta),0,0,  
+              -Math.sin(theta),Math.cos(theta),0,0,  
+              0,0,1,0,  
+              0,0,0,1];
+    // console.log(Math.cos(theta));
+    // let rz = [Math.cos(theta),Math.sin(theta),0,0,  
+    //           -Math.sin(theta),Math.cos(theta),0,0,  
+    //           0,0,1,0,  
+    //           0,0,0,1];
+    value = multiply(m, value);
+    // console.log(this);
+    return this;
+
+   }
+
+
+   this.scale = function(x,y,z) {
+    /**  
+      sx    0   0   0
+      0   sy    0   0
+      0   0   sz    0
+      0   0   0   1
+    */
+    let m = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+    if(!y && !z) { //if y and z are undefined
+      y = x;
+      z = x;
+    }
+
+    value = multiply(m, [x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1]);
+    return this;
+   }
+
+   // INTERNAL VARIABLES AND FUNCTIONS FOR THE Matrix CLASS:
+   let value = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; // INTERNAL VALUE IS 16 NUMBERS.
+   // GET THE CURRENT STATE OF THE Matrix OBJECT.
+
+   this.getValue = function() {
+      return value;
+   }
+   let multiply = function(a, b) {
+      let c = [];
+     
+      /** 
+          a       *    b        =        c
+      [5 2 6 1      [7 5 8 0        [96 68  69 69
+       0 6 2 0    *  1 8 2 6    =    24 56  18 52
+       3 8 1 4       9 4 3 8         58 95  71 92
+       1 8 5 6]      5 3 7 9]        90 107 81 142]
+
+      [a0 a4 a8  a12      [b0 b4 b8  b12        [c0 c4  c8  c12
+       a1 a5 a9  a13    *  b1 b5 b9  b13    =    c1 c5  c9  c13
+       a2 a6 a10 a14       b2 b6 b10 b14         c2 c6  c10 c14
+       a3 a7 a11 a15]      b3 b7 b11 b15]        c3 c7  c11 c15]
+
+      */
+
+      // YOU NEED TO IMPLEMENT MATRIX MULTIPLY HERE.
+
+      // REMEMBER TO LOOP THROUGH ROWS j OF a AND COLUMNS i OF b.
+      // FOR EACH ROW j OF a AND COLUMN i OF b, DO A DOT PRODUCT
+      // BETWEEN THAT ROW OF a AND COLUMN OF b,
+      // TO COMPUTE A FLOATING POINT NUMBER.
+
+      // THAT RESULT WILL GO INTO COLUMN i, ROW j OF c, WHICH IS: c[i + 4*j]
+
+      //hard-coded 4x4 * 4x4 matrix for now
+      c[0] = a[0] * b[0] + a[4] * b[1] + a[8] * b[2] + a[12] * b[3];
+      c[1] = a[1] * b[0] + a[5] * b[1] + a[9] * b[2] + a[13] * b[3];
+      c[2] = a[2] * b[0] + a[6] * b[1] + a[10] * b[2] + a[14] * b[3];
+      c[3] = a[3] * b[0] + a[7] * b[1] + a[11] * b[2] + a[15] * b[3];
+
+      c[4] = a[0] * b[4] + a[4] * b[5] + a[8] * b[6] + a[12] * b[7];
+      c[5] = a[1] * b[4] + a[5] * b[5] + a[9] * b[6] + a[13] * b[7];
+      c[6] = a[2] * b[4] + a[6] * b[5] + a[10] * b[6] + a[14] * b[7];
+      c[7] = a[3] * b[4] + a[7] * b[5] + a[11] * b[6] + a[15] * b[7];
+
+      c[8] = a[0] * b[8] + a[4] * b[9] + a[8] * b[10] + a[12] * b[11];
+      c[9] = a[1] * b[8] + a[5] * b[9] + a[9] * b[10] + a[13] * b[11];
+      c[10] = a[2] * b[8] + a[6] * b[9] + a[10] * b[10] + a[14] * b[11];
+      c[11] = a[3] * b[8] + a[7] * b[9] + a[11] * b[10] + a[15] * b[11];
+
+      c[12] = a[0] * b[12] + a[4] * b[13] + a[8] * b[14] + a[12] * b[15];
+      c[13] = a[1] * b[12] + a[5] * b[13] + a[9] * b[14] + a[13] * b[15];
+      c[14] = a[2] * b[12] + a[6] * b[13] + a[10] * b[14] + a[14] * b[15];
+      c[15] = a[3] * b[12] + a[7] * b[13] + a[11] * b[14] + a[15] * b[15];
+
+      return c; // RETURN THE RESULT OF a x b. c SHOULD BE AN ARRAY OF 16 NUMBERS.
+   }
+}
+
+
+
+// START EVERYTHING.
+
+
+gl_start(canvas1, vs, fs);
+</script>
+

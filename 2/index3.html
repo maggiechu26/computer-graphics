@@ -1,0 +1,273 @@
+<script src=lib3.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=400 height=400></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER: THIS IS WHERE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ float disk(vec2 xy, float x, float y, float r) {
+    xy = (xy - vec2(x, y)) / r;
+    return step(length(xy), 1.);
+ }
+
+ float edge(vec2 xy, float a, float b, float c) {
+    return step(a * xy.x + b * xy.y + c, 0.);
+ }
+
+ uniform float uTime;   // TIME, IN SECONDS
+
+ varying vec3 vPos;     // -1 < vPos.x < +1
+                        // -1 < vPos.y < +1
+                        //      vPos.z == 0
+
+ // CAMERA FOCAL LENGTH
+
+ float fl = 3.;
+
+
+
+// Animate sphere as going up and down
+//Sphere vector of length 4; vec4 sph = vec4(x,y,z,r);
+//v.x, v.y, v.z, v.w --> 4D pts
+//v.r, v.g, v.b, v.a --> color
+
+vec4 Sph = vec4(sin(uTime * 1.0),sin(uTime * 3.0), -4.0,0.3);  
+vec4 Sph2 = vec4(cos(uTime * 1.0),cos(uTime * 3.0), -4.0,0.3);  
+
+ // LIGHT DIRECTION AND COLOR
+ 
+
+ vec3 L  = normalize(vec3(1.0,-sin(uTime),0.5)); //lightDirection
+ vec3 Lc = vec3(1.,1.,1.); //lightColor
+
+
+ vec3 L2  = normalize(vec3(1.0,-cos(uTime),0.5)); //lightDirection
+ vec3 Lc2 = vec3(1.,1.,1.); //lightColor
+
+ // REFLECTANCE: AMBIENT AND DIFFUSE
+
+ vec3 A = vec3(.025,.025,.1); //Ambient
+ vec3 D = vec3(.5,.5,.2); //Diffuse
+
+ vec3 A2 = vec3(.025,.025,.1); //Ambient
+ vec3 D2 = vec3(.5,.5,.2); //Diffuse
+
+ //Phong Model
+ vec3 S = vec3(0.5,0.5,0.5); //Specular Color
+ float p = 20.0; // Specular power p. larger the p, "shinier" the surface.
+ float p2 = 50.0; // Specular power p. larger the p, "shinier" the surface.
+
+ //Equation for Phong Model to compute R vector: R = 2 (N • L) N - L
+ vec3 R (vec3 N, vec3 L) {
+    return 2.0 * dot(N,L) * N - L;
+}
+
+ void main() {
+
+    // BACKGROUND COLOR
+
+    vec3 color = vec3(0.0, 0.0, 0.0);
+    color.b = 3.0 + 5.0 * vPos.y;
+    color.g = 0.05 + 0.05 * cos(10. * vPos.y - 3. * uTime);
+    color.r = 1.0 + 1.0 * vPos.y;
+
+    // COMPUTE RAY (V,W) AT THIS PIXEL
+    //ray aims at: (x, y, -f), where -1 ≤ x ≤ 1 and -1 ≤ y ≤ +1.
+
+    vec3 V = vec3(0.,0.,0.);
+    vec3 W = normalize(vec3(vPos.xy, -fl));
+
+    //nearest object at p = V + Wt, where t > 0.
+
+    // OFFSET EVERYTHING BY SPHERE ORIGIN (center of sphere to origin)
+
+    vec3 Vp = V - Sph.xyz;
+    vec3 Vp2 = V - Sph2.xyz;
+
+    // COMPUTE QUADRATIC COEFFICIENTS
+    //(W • W) t^2 + 2 (W • D) t + (D • D) - r^2 = 0
+    float B = dot(W, Vp);
+    float C = dot(Vp, Vp) - Sph.w * Sph.w;
+    float discr = B * B - C;
+
+    // IF DISCRIMINANT IS NOT NEGATIVE
+
+    if (discr >= 0.) {
+
+       // COMPUTE t.
+
+       float t = -B - sqrt(discr);
+
+       // IF t IS NOT NEGATIVE
+
+       if (t >= 0.) {
+
+          // COMPUTE SURFACE POINT AND NORMAL
+          //S = V + W t (surface point)
+          vec3 P = V + t * W;
+
+    //Surface Normal: N = (S - sph.xyz) / sph.r
+	  vec3 N = normalize(P - Sph.xyz);
+
+	 // DO SURFACE SHADING
+    //Ambient + LightColor * Diffuse *  max(0., dot(N,L)); 
+    //color = A + Lc * D * max(0., dot(N,L));
+    
+
+    //apply noise to sphere Lc
+    Lc += 0.4 * vec3(noise(20.0 * P),
+                     noise(10.0 * P),
+                     noise(30.0 * P));
+    Lc = normalize(Lc);
+
+    float sphereNoise = 0.8;
+    color = A * sphereNoise;
+
+    //specular component of surface: Srgb max(0, E • R)p ), where E = -W
+    //Argb + ∑i lightColori ( Drgb max(0, N • Li) + Srgb max(0, E • R) p )
+          //color = A + Lc * D * max(0., dot(N,L)) + Lc * S * pow(max(0., dot(R(N,L), -W)), p);
+    for (int i = 0 ; i < 2 ; i++) {
+         color += A + Lc * D * max(0., dot(N,L));
+         color += Lc * S * pow(max(0., dot(R(N,L), -W)), p);
+      }
+          color.r = 3.0 + 1.0 * vPos.x;
+       }
+    }
+
+
+    // Second Sphere
+    float B2 = dot(W, Vp2);
+    float C2 = dot(Vp2, Vp2) - Sph2.w * Sph2.w;
+    float discr2 = B2 * B2 - C2;
+
+    // IF DISCRIMINANT IS NOT NEGATIVE
+
+    if (discr2 >= 0.) {
+
+       // COMPUTE t.
+
+       float t = -B2 - sqrt(discr);
+
+       // IF t IS NOT NEGATIVE
+
+       if (t >= 0.) {
+
+          // COMPUTE SURFACE POINT AND NORMAL
+          vec3 P = V + t * W;
+
+	  vec3 N = normalize(P - Sph2.xyz);
+
+    
+    //apply noise to sphere2 Surface Normal
+    N += 0.5 * vec3(noise(30.0 * P),
+                     noise(20.0 * P),
+                     noise(10.0 * P));
+    N = normalize(N);
+
+    float sphereNoise2 = 0.6;
+    color = A2 * sphereNoise2 * 2.0;
+
+    for (int i = 0 ; i < 2 ; i++) {
+         color += A2 + Lc2 * D2 * max(0., dot(N,L2));
+         color += Lc2 * S * pow(max(0., dot(R(N,L2), -W)), p2);
+      }
+          color.r = 3.0 + 1.0 * vPos.y;
+       }
+    }
+    
+
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+RAY TRACING TO A SPHERE - TIME LOOP
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+Implementation of raytracing to a sphere with Phong Model. This is an attempt at creating two red moons of different times/properties chasing each other. One appears smoother while one appears "rougher." I see it as chasing after time itself.
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+   setUniform('1f', 'uTime', time);
+}
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

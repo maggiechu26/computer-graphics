@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src=lib11.js></script>
+<script src=keydrown.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=400 height=400></canvas>
+</center>
+  <body>
+      <div id="playsound">
+          <audio data-key="65" preload="auto" src="808.wav"></audio>
+          <audio data-key="66" preload="auto" src="bass_sample.mp3"></audio>
+          <audio data-key="67" preload="auto" src="vocal-6.mp3"></audio>
+          <audio data-key="68" preload="auto" src="vocal-8.mp3"></audio>
+
+          <audio data-key="69" preload="auto" src="snare6.wav"></audio>
+
+          <audio data-key="70" preload="auto" src="confetti.mp3"></audio>
+
+          <audio data-key="71" preload="auto" src="agogoLow.mp3"></audio>
+          <audio data-key="72" preload="auto" src="vocal-5.mp3"></audio>
+          <audio data-key="73" preload="auto" src="prism-1.mp3"></audio>
+          <audio data-key="74" preload="auto" src="vocal-7.mp3"></audio>
+          <audio data-key="75" preload="auto" src="corona.mp3"></audio>
+          <audio data-key="76" preload="auto" src="hh5.wav"></audio>
+          <audio data-key="77" preload="auto" src="hh8.wav"></audio>
+          <audio data-key="78" preload="auto" src="kick2.wav"></audio>
+          <audio data-key="79" preload="auto" src="kick5.wav"></audio>
+          <audio data-key="80" preload="auto" src="lo-fi-kick.wav"></audio>
+
+          <audio data-key="81" preload="auto" src="piano_melodic.wav"></audio>
+
+          <audio data-key="82" preload="auto" src="chill-lo-fi-rhodes.wav"></audio>
+
+          <audio data-key="83" preload="auto" src="rim2.wav"></audio>
+
+          <audio data-key="84" preload="auto" src="clap_sample.mp3"></audio>
+
+          <audio data-key="85" preload="auto"src="snare4.wav"></audio>
+          <audio data-key="86" preload="auto"src="vocal-4.mp3"></audio>
+
+           <audio data-key="87" preload="auto"src="snare5.wav"></audio>
+            <audio data-key="88" preload="auto"src="rim4.wav"></audio>
+             <audio data-key="89" preload="auto"src="hh6.wav"></audio>
+              <audio data-key="90" preload="auto"src="hh2.wav"></audio>
+            <audio data-key="187" preload="auto"src="hh_sample.mp3"></audio>
+
+
+           <audio data-key="49" preload="auto"src="stab-2.mp3"></audio>
+            <audio data-key="50" preload="auto"src="stab-1.mp3"></audio>
+             <audio data-key="51" preload="auto"src="stab-5.mp3"></audio>
+              <audio data-key="52" preload="auto"src="F2.mp3"></audio>
+            <audio data-key="53" preload="auto"src="G2.mp3"></audio>
+
+            <audio date-key="scratch" id="scratch" preload="auto"src="record_scratch.wav"></audio>
+
+      </div>
+  </body>
+<br>
+<audio controls>
+  <source src="hemisphere.mp3" type="audio/mpeg">
+  Your browser does not support the audio element.
+</audio>
+<br>
+Rotate view
+<input type=range min=1 max=100 value=50 class=slider id=rotateViewSlider>
+<p>
+<table><tr><td>Object shape:<td><div id=shapeButtons></div></table>
+<table><tr><td>Object color:<td><div id=colorButtons></div></table>
+<table><tr><td>Object texture:<td><div id=textureButtons></div></table>
+
+<table><tr>
+<td>Rotate
+<br>X <input type=range min=1 max=100 value=50 class=slider id=rotateXSlider>
+<br>Y <input type=range min=1 max=100 value=50 class=slider id=rotateYSlider>
+<br>Z <input type=range min=1 max=100 value=50 class=slider id=rotateZSlider>
+
+<td width=20>
+
+<td>Scale
+<br>X <input type=range min=1 max=100 value=25 class=slider id=scaleXSlider>
+<br>Y <input type=range min=1 max=100 value=25 class=slider id=scaleYSlider>
+<br>Z <input type=range min=1 max=100 value=25 class=slider id=scaleZSlider>
+
+</table>
+<p>
+  <button type="button">Enable sound</button>
+
+</p>
+
+
+</body>
+<script canvas="canvas1">
+
+window.addEventListener('keydown', event => {
+  const audio = document.querySelector(`audio[data-key="${event.keyCode}"]`)
+  // if there is no audio tag stop the code
+  if(!audio) return;
+  // else play the audio
+  audio.load()
+  audio.play()
+})
+
+</script>
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   attribute vec3 aNor;
+   attribute vec2 aUV;
+   uniform   mat4 uPMat;
+   uniform   mat4 uMatF;
+   uniform   mat4 uMatI;
+   varying   vec3 vaPos;
+   varying   vec3 vPos;
+   varying   vec3 vNor;
+   varying   vec2 vUV;
+   void main() {
+      vec4 pos = uPMat * uMatF * vec4(aPos, 1.);
+      vec4 nor = vec4(aNor, 0.) * uMatI;
+      gl_Position = pos * vec4(1.,1.,1./10.,1.);
+      vaPos = aPos;
+      vPos = pos.xyz;
+      vNor = nor.xyz;
+      vUV  = aUV;
+   }
+</script>
+
+<!!-------- FRAGMENT SHADER: THIS IS WHERE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ const int nl = 3;            // NUMBER OF LIGHTS
+ uniform vec3  uLDir[nl];     // LIGHT DIRECTIONS
+ uniform vec3  uLCol[nl];     // LIGHT COLORS
+ uniform mat4  uM;            // MATERIAL PROPERTIES
+ uniform float uTime;         // TIME (CURRENTLY UNUSED)
+
+///////////////////////////////////////////////////////////////
+
+ uniform float uTexture;      // DO WE SHOW THE TEXTURE?
+ uniform sampler2D uSampler;  // SAMPLE THE TEXTURE USING vUV.
+
+///////////////////////////////////////////////////////////////
+
+ varying vec3  vPos;
+ varying vec3  vaPos;
+ varying vec3  vNor;
+ varying vec2  vUV;
+
+ void main() {
+    vec3 P = vPos;            // SURFACE POINT
+    vec3 N = normalize(vNor); // SURFACE NORMAL
+    vec3 E = vec3(0.,0.,1.);  // APPROX DIRECTION TO EYE
+
+    // UNPACK MATERIAL PROPERTIES MATRIX
+
+    mat4 material = uM;
+    vec3 ambient  = material[0].rgb;
+    vec3 diffuse  = material[1].rgb;
+    vec3 specular = material[2].rgb;
+    float p       = material[2].a;
+    float ta      = material[3].r;
+    float tf      = material[3].g;
+
+    // DO PHONG SHADING
+
+    vec3 color = ambient;
+    for (int i = 0 ; i < nl ; i++) {
+       vec3 R = 2. * dot(uLDir[i], N) * N - uLDir[i];
+       float d = max(0., dot(uLDir[i], N));
+       float s = pow(max(0., dot(E, R)), p);
+       color += uLCol[i] * (diffuse * d + specular * s);
+    }
+    color += specular * .02 * (.8 + noise(5. * N)) * N.z;
+    if (ta != 0.)
+       color *= 1. + ta * noise(vec3(tf * vUV, 0.));
+
+///////////////////////////////////////////////////////////////
+
+    vec4 texture = texture2D(uSampler, vUV);
+    color *= mix(vec3(1.,1.,1.), texture.rgb, texture.a * uTexture);
+
+///////////////////////////////////////////////////////////////
+
+    gl_FragColor = vec4(sqrt(color), 1.0);
+ }</script>
+
+<!!-------- A PROPERLY DESCRIPTIVE TITLE -------->
+
+<script id='my_title' type='text/html'>
+Make Your Own Beats and Graphics
+</script>
+
+<!!-------- A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+This project is inspired by my interest in music and visualizations. It is also inspired by patatap.<p>
+
+Press any key from A-Z/1-5 to create your own beats and music rhythms.
+<p>
+<b>I suggest starting with pressing "q" and "r" at the same time :) </b>
+<p>
+If you move your cursor around the canvas, the position of the shape would also change.
+<p>
+Press "=" to delete a seleceted shape.
+If the frame rate drops significantly, it's best to start deleting shapes.
+<p>
+You can also play along with the music "Hemisphere" by Paradis.
+
+<p>
+Explore and play around with this
+</script>
+
+<script>
+
+let blue_plastic          = phong([0,.05,.1], [0,.25,.5], [1,1,1], 20);
+let brass                 = phong([.02,.012,0], [.02,.012,0], [1,.6,0], 10);
+let gold                  = phong([.1,.03,0], [.12,.05,0], [1,.5,0], 10);
+let green_plastic         = phong([0,.1,0], [0,.5,0], [1,1,1], 20);
+let red_mottled_plastic   = phong([.1,0,0], [.5,0,0], [1,1,1], 20, 1, 20);
+let red_plastic           = phong([.1,0,0], [.5,0,0], [1,1,1], 20);
+let steel                 = phong([.02,.02,.02], [.02,.02,.02], [1,1,1], 10);
+let white_gold            = phong([.01,.01,.008], [0,0,0], [2,2,1.6], 40);
+let white_mottled_plastic = phong([.1,.1,.1], [.5,.5,.5], [1,1,1], 20, 1, 20);
+let white_plastic         = phong([.1,.1,.1], [.5,.5,.5], [1,1,1], 20);
+let bright_green        = phong([.1,0.5,0], [.5,.2,0], [1,.5,0], 20);
+let color2        = phong([.1,0.2,0], [1.,0.2,1.5], [1,.5,0], 20);
+let gold2         = phong([.1,.03,0.], [.1,.01,0], [3,1,0], 50);
+
+
+// BUILD ALL OF THE COLOR BUTTONS.
+
+let colors = 'gold,red,green,blue, white'.split(',');
+let materials = [  gold, red_plastic, green_plastic, blue_plastic, white_plastic,  ];
+let selectedColor = 0;
+
+(() => {
+   let s = '';
+   for (let n = 0 ; n < colors.length ; n++) {
+      s += '<input type=button '
+         + 'id=colorButton' + n + ' '
+	 + 'style=\'border-style:none;'
+	 +         'background-color:' + colors[n] + '\''
+	 + 'onClick = selectColor(' + n + ')'
+         + '>\n';
+   }
+   colorButtons.innerHTML = s;
+})();
+
+let selectColor = n => {
+   selectedColor = n;
+   for (let i = 0 ; i < colors.length ; i++) {
+      let button = window['colorButton' + i];
+      button.style.height = i == n ? 18 : 10;
+   }
+}
+
+selectColor(0);
+
+
+// BUILD ALL OF THE SHAPE BUTTONS.
+
+let shapeNames = 'sphere,cube,openCone, disk'.split(',');
+let shapes = [ sphere, cube, openCone, disk ];
+let selectedShape = 0;
+
+(() => {
+   let s = '';
+   for (let n = 0 ; n < shapeNames.length ; n++) {
+      let name = shapeNames[n];
+      s += '<button '
+         + 'id=shapeButton' + n + ' '
+	 + 'style=\'border-style:none\''
+	 + 'onClick=selectShape(' + n + ')>'
+	 + '<b>' + name + '</b>'
+         + '</button> '
+   }
+   shapeButtons.innerHTML = s;
+})();
+
+let selectShape = n => {
+   selectedShape = n;
+   for (let n = 0 ; n < shapeNames.length ; n++) {
+      let button = document.getElementById('shapeButton' + n);
+      let bgColor = n == selectedShape ? 'white' : 'gray';
+      button.style.backgroundColor = bgColor;
+   }
+}
+
+selectShape(0);
+
+
+// BUILD ALL OF THE TEXTURE BUTTONS.
+
+let textureNames = 'none,brick,polka dots'.split(',');
+let textureFiles = [ null, 'brick.png', 'polkadots.png' ];
+let selectedTexture = 0;
+
+(() => {
+   let s = '';
+   for (let n = 0 ; n < textureNames.length ; n++) {
+      let name = textureNames[n];
+      s += '<button '
+         + 'id=textureButton' + n + ' '
+	 + 'style=\'border-style:none\''
+	 + 'onClick=selectTexture(' + n + ')>'
+	 + '<b>' + name + '</b>'
+         + '</button> '
+   }
+   textureButtons.innerHTML = s;
+})();
+
+let selectTexture = n => {
+   selectedTexture = n;
+   for (let n = 0 ; n < textureNames.length ; n++) {
+      let button = document.getElementById('textureButton' + n);
+      let bgColor = n == selectedTexture ? 'white' : 'gray';
+      button.style.backgroundColor = bgColor;
+   }
+}
+
+selectTexture(0);
+
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+
+/********************************************************************************
+WE ARE COMMENTING THIS OUT SO THAT THE FRAGMENT SHADER EDITOR DOES NOT APPEAR.
+
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+********************************************************************************/
+
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+
+/********************************************************************************
+WE ALSO COMMENT THIS OUT, AS PART OF COMMENTING OUT THE FRAGMENT SHADER EDITOR.
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+********************************************************************************/
+
+
+// USEFUL ANIMATION VARIABLES.
+
+let startTime = Date.now(), prevTime = startTime, rate = 1, theta = 0;
+
+
+// DELETE THE SELECTED OBJECT.
+
+let deleteSelectedObject = () => {
+   if (selectedObject)
+      selectedObject.delete();
+}
+
+
+// THIS METHOD GETS CALLED WHENEVER THE USER ADJUSTS THE VIEW ROTATION SLIDER.
+
+rotateViewSlider.oninput = function() {
+   theta = Math.PI * (.5 - this.value / 50);
+var audio = document.getElementById('scratch');
+   // console.log(audio);
+     audio.volume = 0.2;
+   audio.load();
+   audio.play();
+}
+
+
+// RESPONSE TO USER ADJUSTING SLIDER VALUES FOR ROTATING THE SELECTED OBJECT.
+
+rotateXSlider.oninput = function() { rotateAboutAxis(0, this.value / 50 - 1); }
+rotateYSlider.oninput = function() { rotateAboutAxis(1, this.value / 50 - 1); }
+rotateZSlider.oninput = function() { rotateAboutAxis(2, this.value / 50 - 1); }
+
+let rotateAboutAxis = (axis, value) => {
+   if (selectedObject) {
+      selectedObject.rotate[axis] = value;
+      transformObject(selectedObject);
+   }
+}
+
+
+// RESPONSE TO USER ADJUSTING SLIDER VALUES FOR SCALING THE SELECTED OBJECT.
+
+scaleXSlider.oninput = function() { scaleAboutAxis(0, this.value / 25); }
+scaleYSlider.oninput = function() { scaleAboutAxis(1, this.value / 25); }
+scaleZSlider.oninput = function() { scaleAboutAxis(2, this.value / 25); }
+
+let scaleAboutAxis = (axis, value) => {
+   if (selectedObject) {
+      selectedObject.scale[axis] = value;
+      transformObject(selectedObject);
+   }
+}
+
+
+// DEFINE ANIMATION CALLBACK, WHICH WILL GET CALLED AT EVERY FRAME.
+
+let time = 0;
+
+let viewMatrix = new Matrix();
+let inverseViewMatrix = new Matrix();
+
+function animate() {
+
+   // VARY THE ROTATION RATE DEPENDING ON THE SLIDER VALUE.
+   theta += .2 * rate * (time - prevTime);
+   prevTime = time;
+
+   let s = Math.sin(5 * theta);
+   let c = Math.cos(5 * theta);
+   time = (Date.now() - startTime) / 1000;
+
+   // SET TIME IN THE GPU.
+
+   setUniform('1f', 'uTime', time);
+
+   // SET LIGHTS IN THE GPU.
+
+   setUniform('3fv', 'uLDir', [ .57,.57,.57, -.57,-.57,-.57, -.8,-.6,0 ]);
+   setUniform('3fv', 'uLCol', [ 1,1,1,        .25,.2,.15,     .2,.18,.16 ]);
+
+   // DRAW EVERYTHING.
+
+   viewMatrix.identity().rotateY(theta);
+
+   inverseViewMatrix.setValue(viewMatrix.getValue());
+   inverseViewMatrix.invert();
+
+   scene.identity().multiply(viewMatrix);
+
+
+   // SET THE BACKGROUND COLOR, IN THIS CASE TO DARK BLUE. (.1,.1,.2,5);
+
+   document.addEventListener('keydown', function(e){
+    if(e.key === 'r') {gl.clearColor(.3,.1,.2,1);}
+    if(e.key === 's') {gl.clearColor(.1,.1,.2,5);}
+    if(e.key === 't') {gl.clearColor(.5,.1,.2,1);}
+    if(e.key === 'u') {gl.clearColor(.1,.17,.5,1);}
+    if(e.key === 'v') {gl.clearColor(.5,.7,.54,1);}
+    if(e.key === 'w') {gl.clearColor(.9,.17,.5,1);}
+    if(e.key === 'x') {gl.clearColor(1.3,.17,.5,1);}
+    if(e.key === 'y') {gl.clearColor(-2,.17,.5,1);}
+
+
+})
+
+   gl.clear(gl.COLOR_BUFFER_BIT);
+
+
+   // DRAW EVERYTHING
+
+   objectAtCursor = null;
+   root.draw();
+   root2.draw();
+
+   // SET THE ROTATE AND SCALE SLIDERS FOR THE CURRENTLY SELECTED OBJECT.
+
+   if (selectedObject) {
+      rotateXSlider.value = 50 * selectedObject.rotate[0] + 50;
+      rotateYSlider.value = 50 * selectedObject.rotate[1] + 50;
+      rotateZSlider.value = 50 * selectedObject.rotate[2] + 50;
+
+      scaleXSlider.value = 25 * selectedObject.scale[0];
+      scaleYSlider.value = 25 * selectedObject.scale[1];
+      scaleZSlider.value = 25 * selectedObject.scale[2];
+   }
+}
+
+
+let root = new Object();
+let gui = root.add();
+let scene = root.add();
+let root2 = new Object();
+let scene2 = root.add();
+let ringShape = root.add();
+let parentPath1 = root.add();
+let tackShape = root.add();
+
+let isPressed = false;
+let keyDown =false;
+
+canvas1.onPress = (x, y) => {
+   isPressed = true;
+   isDragged = false;
+   dragObject = objectAtCursor;
+}
+
+
+canvas1.onDrag = (x, y) => {
+   isDragged = true;
+
+   // DRAG THE OBJECT AT THE CURSOR TO TRANSLATE IT.
+
+   if (dragObject) {
+      let p = dragObject.translate;
+      p = viewMatrix.transform(p);
+      p[0] = x;
+      p[1] = y;
+      p = inverseViewMatrix.transform(p);
+      dragObject.translate = p;
+      transformObject(dragObject);
+   }
+}
+
+
+canvas1.onRelease = (x, y) => {
+
+   // CLICK ON THE BACKGROUND TO CREATE A NEW OBJECT.
+
+   // if (! dragObject) {
+   //    let p = inverseViewMatrix.transform([x,y,0]);
+   //    let phong = materials[selectedColor];
+   //    let obj = scene.add(shapes[selectedShape], phong);
+   //    if (selectedTexture)
+   //       obj.textureSrc = textureFiles[selectedTexture];
+   //    obj.translate = p;
+   //    obj.rotate = [0, 0, 0];
+   //    obj.scale = [1, 1, 1];
+   //    transformObject(obj);
+   // }
+
+   // CLICK ON AN OBJECT TO SET ITS COLOR AND TEXTURE.
+
+   // else if (! isDragged) {
+   //    dragObject.phong = materials[selectedColor];
+   //    dragObject.textureSrc = selectedTexture ? textureFiles[selectedTexture] : null;
+   //    dragObject.texture = null;
+   // }
+}
+
+
+// TRANSFORM AN OBJECT, USING ITS TRANSFORM PROPERTIES.
+
+let transformObject = obj => {
+   obj.identity()
+      .translate(obj.translate)
+      .rotateX(Math.PI * obj.rotate[0])
+      .rotateY(Math.PI * obj.rotate[1])
+      .rotateZ(Math.PI * obj.rotate[2])
+      .scale(obj.scale)
+      .scale(0.1);
+}
+
+
+canvas1.onMove = (x, y) => {
+   isPressed = false;
+   px = x;
+   py = y;
+}
+
+
+//Keyup is fired once the key is released and the default action was performed.
+//Keydown will repeat while key is not pressed.
+
+var keys = {};
+window.onkeyup = function(e) { keys[e.keyCode] = false; }
+window.onkeydown = function(e) { keys[e.keyCode] = true; }
+
+let pathObjects = [];
+let pathPositions = [];
+
+document.addEventListener('keydown', function(e){
+  //clearn screen
+  if( (e.key==='=')) {
+    deleteSelectedObject();
+   }
+
+   if(e.key === 'a') {
+   let createRingShape = function() {
+      let a = .085, b = .04, c = .16,
+          A  = .46, B = .6, C = .2;
+
+      ringProfile = sampleBezierPath(
+         [a,b,  0,0,0,  0,0,0,  b,a,c, c,a],
+         [A,B,  B,A,C, -C,-A,-B,  -B,-A,-C, C,A],
+         [0,0,0,0],
+         20);
+      return extrude(ringProfile, createCircularPath(50));
+   }
+
+   ringShape.add(createRingShape(), white_mottled_plastic).scale(1,1,.28).scale(1.3);
+    ringShape.identity()
+       // .translate(rotX,rotY,0)
+       .rotateZ(Math.cos(theta * 10))
+              .rotateY(Math.cos(theta * 10))
+       .scale(0.2);
+   }
+
+    if(e.key === 'b') {
+    //create a map function
+   let createRingShape = function() {
+      let a = .085, b = .04, c = .16,
+          A  = .46, B = .6, C = .2;
+
+      ringProfile = sampleBezierPath(
+         [a,b,  0,0,0,  0,0,0,  b,a,c, c,a],
+         [A,B,  B,A,C, -C,-A,-B,  -B,-A,-C, C,A],
+         [0,0,0,0],
+         20);
+      return extrude(ringProfile, createCircularPath(50));
+   }
+
+   ringShape.add(createRingShape(), white_plastic).scale(1,1,.28).scale(1.3);
+    ringShape.identity()
+       // .translate(rotX,rotY,0)
+       .rotateZ(Math.cos(theta * 20))
+              .rotateY(Math.sin(theta * 20))
+       .scale(0.3);
+   }
+
+   if(e.key === 'c') {
+   let createRingShape = function() {
+      let a = .085, b = .04, c = .16,
+          A  = .46, B = .6, C = .2;
+
+      ringProfile = sampleBezierPath(
+         [a,b,  0,0,0,  0,0,0,  b,a,c, c,a],
+         [A,B,  B,A,C, -C,-A,-B,  -B,-A,-C, C,A],
+         [0,0,0,0],
+         20);
+      return extrude(ringProfile, createCircularPath(50));
+   }
+   ringShape.add(createRingShape(), white_gold).scale(1,1,.28).scale(1.3);
+   ringShape.identity()
+            .rotateZ(Math.tan(theta * 30))
+            .rotateX(Math.sin(px * 10))
+
+            .scale(0.5);
+   }
+
+   if(e.key === 'd') {
+
+   let createRingShape = function() {
+      let a = .085, b = .04, c = .16,
+          A  = .46, B = .6, C = .2;
+
+      ringProfile = sampleBezierPath(
+         [a,b,  0,0,0,  0,0,0,  b,a,c, c,a],
+         [A,B,  B,A,C, -C,-A,-B,  -B,-A,-C, C,A],
+         [0,0,0,0],
+         20);
+      return extrude(ringProfile, createCircularPath(50));
+   }
+   ringShape.add(createRingShape(), white_mottled_plastic).scale(1,1,.28).scale(1.3);
+   ringShape.identity()
+            .rotateY(Math.sin(theta * 40))
+            .rotateZ(Math.cos(theta * 40))
+            .rotateX(Math.sin(py))
+
+            .scale(0.7);
+   }
+
+
+  if(e.key === 'e') {
+      let p = inverseViewMatrix.transform([px,py,-1]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0, 0];
+      obj.scale = [1, 1, 1];
+      transformObject(obj);
+  }
+
+ if(e.key === 'f') {
+      let p = inverseViewMatrix.transform([px,py,0]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0.5, 0, 0];
+      obj.scale = [1, 1, 1];
+      transformObject(obj);
+  }
+
+   if(e.key === 'g') {
+      let p = inverseViewMatrix.transform([px,py,-1]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [1, 0, 0];
+      obj.scale = [-1, 1, 1];
+      transformObject(obj);
+  }
+
+   if(e.key === 'h') {
+      let p = inverseViewMatrix.transform([px,py,-1]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);
+  }
+
+   if(e.key === 'i') {
+      let p = inverseViewMatrix.transform([px,py,-1]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);
+  }
+
+   if(e.key === 'j') {
+      let p = inverseViewMatrix.transform([px,py,-1]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);
+  }
+
+   if(e.key === 'k') {
+      let p = inverseViewMatrix.transform([px,py,-1]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);
+  }
+
+     if(e.key === 'z') {
+      let p = inverseViewMatrix.transform([px,py,-1]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(shapes[selectedShape], phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);
+  }
+
+   if(e.key === 'l') {
+      let p = inverseViewMatrix.transform([px,py,-2.5]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(openCone, phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);  }
+
+  if(e.key === 'm') {
+      let p = inverseViewMatrix.transform([px,py,-2.5]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(cube, phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);
+  }
+
+    if(e.key === 'n') {
+      let p = inverseViewMatrix.transform([px,py,-2.5]);
+      let phong = materials[selectedColor];
+      let obj = scene.add(torus, phong);
+      obj.textureSrc = textureFiles[selectedTexture];
+      obj.translate = p;
+      obj.rotate = [0, 0.5, 0];
+      obj.scale = [1.5, 1, 1];
+      transformObject(obj);
+  }
+
+  if(e.key === 'o') {
+    let myTack = createTriangleMesh(uvToLathe, 30, 30,
+   [
+      [1.5,-.3, .05,.075,.5, .5,0,4], // r
+      [1.5,-.7, 0,.85,.92, 1,1,6]     // z
+   ]
+);
+    tackShape.add(myTack, brass);
+    tackShape.identity().rotateX(theta)
+                  .rotateY(theta/2)
+                  .scale(.3);
+
+  }
+
+  if(e.key === 'p') {
+    let myTack = createTriangleMesh(uvToLathe, 30, 30,
+   [
+      [2,.05, .05,.075,.5, .5,0], // r
+      [-1,-.7, 0,.85,.92, 1,1],     // z
+      [-1,-.7, 0,.85,.92, 1,1]     // z
+
+   ]
+);
+    tackShape.add(myTack, steel);
+    tackShape.identity().rotateX(theta)
+                  .rotateY(theta/2)
+                  .scale(.3);
+  }
+
+  if(e.key === 'q') {
+    let myTack = createTriangleMesh(uvToLathe, 30, 30,
+   [
+      [1.8,.05, .05,.075,.5, .5,0], // r
+      [-1,-.7, 0.5,.85,.92, 1,1],     // z
+      [-1,-.7, 0,.85,.92, 4,1],     // z
+      [1.2,2.5, .05,.075,.5, .5,0], // r
+
+
+   ]
+);
+    tackShape.add(myTack, gold2);
+    tackShape.identity().rotateZ(theta)
+                  .rotateY(theta/2)
+                  .scale(.3);
+  }
+
+})
+
+
+// START EVERYTHING.
+function map(value, min1, max1, min2, max2) {
+  return (value - min1) * (max2 - min2) / (max1 - min1) + min2;
+}
+gl_start(canvas1, vs, fs);
+
+</script>
+</head>
+
+</html>
